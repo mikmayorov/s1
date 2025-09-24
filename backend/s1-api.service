@@ -1,0 +1,16 @@
+[Unit]
+Description=S1 API (Mojolicious)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/s1/backend
+ExecStart=/usr/bin/hypnotoad -f s1-api.pl
+ExecReload=/usr/bin/hypnotoad s1-api.pl
+Restart=on-failure
+User=www-data
+Environment=MOJO_LISTEN=http://127.0.0.1:5000
+Environment=MOJO_LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target
