@@ -8,6 +8,7 @@
   <style>
     body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
     #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
     #search-container {
       position: absolute;
       top: 15px;
@@ -17,17 +18,45 @@
       border-radius: 8px;
       box-shadow: 0 0 5px rgba(0,0,0,0.3);
       z-index: 10;
+      width: 300px;
     }
+
     #search-input {
-      width: 250px;
+      width: 100%;
       padding: 5px;
       font-size: 14px;
+    }
+
+    #results {
+      margin-top: 8px;
+      max-height: 60vh;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+
+    .result-item {
+      padding: 6px 4px;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .result-item:hover {
+      background: #f0f0f0;
+    }
+
+    .result-icon {
+      width: 16px;
+      height: 16px;
     }
   </style>
 </head>
 <body>
   <div id="search-container">
     <input id="search-input" type="text" placeholder="Введите адрес..." />
+    <div id="results"></div>
   </div>
   <div id="map"></div>
 
@@ -36,13 +65,26 @@
     const map = new maplibregl.Map({
       container: 'map',
       style: 'https://demotiles.maplibre.org/style.json',
-      center: [37.618423, 55.751244], // Москва
+      center: [37.618423, 55.751244],
       zoom: 10
     });
 
     map.addControl(new maplibregl.NavigationControl());
 
     const input = document.getElementById('search-input');
+    const resultsContainer = document.getElementById('results');
+
+    const icons = {
+      house: '🏠',
+      apartment: '🏢',
+      room: '🚪',
+      carplace: '🚗',
+      stead: '🌿',
+      address: '📍',
+      building: '🏗️',
+      default: '📦'
+    };
+
     input.addEventListener('keypress', function (e) {
       if (e.key === 'Enter') {
         const q = input.value.trim();
@@ -51,23 +93,43 @@
     });
 
     async function performSearch(q) {
+      resultsContainer.innerHTML = '<em>Поиск...</em>';
       try {
         const res = await fetch(`/s1/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-
-        if (data.length > 0) {
-          const result = data[0];
-          const lat = parseFloat(result.latitude);
-          const lon = parseFloat(result.longitude);
-
-          new maplibregl.Marker().setLngLat([lon, lat]).addTo(map);
-          map.flyTo({ center: [lon, lat], zoom: 16 });
-        } else {
-          alert('Ничего не найдено');
+        if (data.length === 0) {
+          resultsContainer.innerHTML = '<em>Ничего не найдено</em>';
+          return;
         }
+        resultsContainer.innerHTML = '';
+
+        data.forEach((item) => {
+          const icon = icons[item.type] || icons.default;
+          const label = item.full_address || item.fulladdress || 'Без названия';
+
+          const div = document.createElement('div');
+          div.className = 'result-item';
+          div.innerHTML = `<span class="result-icon">${
+            item.apartmentbuilding ? icons.apartment : icon
+          }</span><span>${label}</span>`;
+
+          div.addEventListener('click', () => {
+            if (item.longitude && item.latitude) {
+              const lng = parseFloat(item.longitude);
+              const lat = parseFloat(item.latitude);
+              new maplibregl.Marker().setLngLat([lng, lat]).addTo(map);
+              map.flyTo({ center: [lng, lat], zoom: 16 });
+            } else {
+              alert('Нет координат для отображения на карте');
+            }
+          });
+
+          resultsContainer.appendChild(div);
+        });
       } catch (err) {
         console.error('Search error:', err);
-        alert('Ошибка поиска');
+        resultsContainer.innerHTML = `<span style="color:red">Ошибка: ${err.message}</span>`;
       }
     }
   </script>
