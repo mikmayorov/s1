@@ -39,11 +39,11 @@ map { if ( /^hypnotoad\.(.+)/ ) { app->config->{hypnotoad}{$1} = $cfg{$_}; } } k
 
 # универсальный поиск
 get '/api/search' => sub ($c) {
-  my $q = trim($c->param('q') // '');
+  my $q = Mojo::Util::trim($c->param('q') // '');
   return $c->render(
                 status => 400,                # Bad Request
                 json => { error => 'parameter q is required with min lenght 2 char' }
-                ) if $q eq '' || length($q) < 2;
+                ) if $q eq '' || length($q) < 3;
 
   # Нормализация запроса
   my $norm = lc $q;
@@ -73,7 +73,7 @@ get '/api/search' => sub ($c) {
     { precision => 60, scope => 'gar', type => 'room', full_address => 'Ростовская область, город Таганрог, улица Театральная, дом 17-2, квартира 5, помещение 69', gar_objectid=> '97944774' }
     );
 
-  $c->render(json => { hits => \@hits });
+  $c->render(json => \@hits);
 };
 
 app->start;
