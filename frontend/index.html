@@ -52,7 +52,7 @@
 
     async function performSearch(q) {
       try {
-        const res = await fetch(`/api/address/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/s1/api/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
 
         if (data.length > 0) {
