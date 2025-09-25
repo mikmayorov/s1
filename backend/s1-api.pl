@@ -1,19 +1,17 @@
 #!/usr/bin/env perl
 
 use warnings;
-use strict qw/vars/;
-use feature qw/say/;
-use autodie;
+use strict;
+use feature ':all';
 use utf8;
 use open qw/:std :encoding(utf8)/;
 
 use POSIX qw(strftime);
-use Data::Dump qw/dump dd/;
+use DDP; # аналог Data::Dump
 use Config::Simple;
 use Getopt::Long;
 use DBI;
 
-use Mojo::Util qw(trim);
 use Mojolicious::Lite -signatures;
 use Mojo::JSON qw(encode_json decode_json);
 
@@ -21,20 +19,25 @@ use Mojo::JSON qw(encode_json decode_json);
 $0 =~ /^(.+)\/.+?.pl$/;
 our $cmddir = $1;
 
-my $cfgfile = "$cmddir/s1-api.cfg";
+my $cfgfile = "$cmddir/s1-api.conf";
 my %cfg;
 
 GetOptions( 'config=s' => \$cfgfile );
 
-Config::Simple->import_from($cfgfile, \%cfg) or die Config::Simple->error();
+Config::Simple->import_from($cfgfile, \%cfg);
+# небольшие проблемы с модулем Config::Simple (если переменная массив, то удаляем из него значения undef)
+map { if (ref eq 'ARRAY') { @$_ = grep { defined } @$_ } } values %cfg;
 
 # если yes то пишем логи в файл all.log
-if ( $cfg{logfile} eq "yes" ) {
+if ( $cfg{'app.log2file'} eq 'yes' ) {
     open (STDOUT, '>>', "$cmddir/all.log");
     open(STDERR, '>&', \*STDOUT);
 }
 
-# Поиск адресов
+# настройка http сервера hypnotoad
+map { if ( /^hypnotoad\.(.+)/ ) { app->config->{hypnotoad}{$1} = $cfg{$_}; } } keys %cfg;
+
+# универсальный поиск
 get '/api/search' => sub ($c) {
   my $q = trim($c->param('q') // '');
   return $c->render(
