@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>MapLibre + Поиск</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    #search-container {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    #search-input {
+      width: 250px;
+      padding: 5px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="search-container">
+    <input id="search-input" type="text" placeholder="Введите адрес..." />
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+  <script>
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://demotiles.maplibre.org/style.json',
+      center: [37.618423, 55.751244], // Москва
+      zoom: 10
+    });
+
+    map.addControl(new maplibregl.NavigationControl());
+
+    const input = document.getElementById('search-input');
+    input.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        const q = input.value.trim();
+        if (q) performSearch(q);
+      }
+    });
+
+    async function performSearch(q) {
+      try {
+        const res = await fetch(`/api/address/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        if (data.length > 0) {
+          const result = data[0];
+          const lat = parseFloat(result.latitude);
+          const lon = parseFloat(result.longitude);
+
+          new maplibregl.Marker().setLngLat([lon, lat]).addTo(map);
+          map.flyTo({ center: [lon, lat], zoom: 16 });
+        } else {
+          alert('Ничего не найдено');
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+        alert('Ошибка поиска');
+      }
+    }
+  </script>
+</body>
+</html>
