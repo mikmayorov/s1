@@ -37,21 +37,66 @@ if ( $cfg{'app.log2file'} eq 'yes' ) {
 # настройка http сервера hypnotoad
 map { if ( /^hypnotoad\.(.+)/ ) { app->config->{hypnotoad}{$1} = $cfg{$_}; } } keys %cfg;
 
+
+app->hook(around_dispatch => sub {
+    my ($next, $c) = @_;
+    my $res;
+
+    eval {
+        $res = $next->();
+    };
+    if ($@) {
+        $c->app->log->error("UNCAUGHT ERROR: $@");
+        return $c->render(
+            status => 500,
+            json   => { error => "Internal server error" },
+        );
+    }
+
+    return $res;
+});
+
+my $dbh = DBI->connect('dbi:Pg:dbname=' . $cfg{'db.name'} . ';host=' . $cfg{'db.host'}, $cfg{'db.user'}, $cfg{'db.password'},
+                       { PrintWarn => 0,
+                         PrintError => 0,
+                         RaiseError => 1,
+                         AutoCommit => 1,
+                         ShowErrorStatement => 1,
+                         pg_enable_utf8     => 1,
+                         HandleError        => sub {
+                              my ($err, $h, $ret) = @_;   # $h - handle (dbh или sth)
+                              my $sql = eval { $h->{Statement} } // '';
+                              # app->log->error("DBI error: $err; SQL: $sql");
+                              # вернуть 0, чтобы ошибка дальше пошла в RaiseError (die)
+                              return 0; },
+                        }
+                         ) || die "Не могу соедениться с базой данных";
+
+# проверка что api 
+get '/api/ping' => sub {
+    my $c = shift;
+    $c->render(text => 'pong');
+};
+
 # универсальный поиск
 get '/api/search' => sub ($c) {
   my $q = Mojo::Util::trim($c->param('q') // '');
+  
+  $c->app->log->debug("search called: q=$q");
+  
   return $c->render(
                 status => 400,                # Bad Request
                 json => { error => 'parameter q is required with min lenght 2 char' }
                 ) if $q eq '' || length($q) < 3;
+  
+  my $sth = $dbh->prepare('SELECT row_number() over () index_number, * FROM search_gar(?)');
+  $sth->execute($q);
+  my $rows = $sth->fetchall_arrayref({});
+  $sth->finish;
 
-  # Нормализация запроса
-  my $norm = lc $q;
-  $norm =~ s/\s+/ /g;
-  # простые синонимы/сокращения — можно расширять (непонятно надо или нет)
-  # $norm =~ s/\bул\b/улица/g;
-  # $norm =~ s/\bпр\b/проспект/g;
-
+  my @result;
+  push @result, { scope => 'gar', number_results => scalar(@$rows), data => $rows };
+  
   my @hits = (
     { precision => 99, scope => 'gar', type => 'house', full_address => 'Ростовская область, город Таганрог, переулок 14-й Новый, дом 11', gar_objectid=>'79176940', housetype=>'дом' },
     { precision => 99, scope => 'gar', type => 'house', full_address => 'Ростовская область, город Таганрог, переулок Каркасный, дом 11', gar_objectid=>'73266700', housetype=>'дом', apartmentbuilding=>1, numberapartments=>80 },
@@ -73,7 +118,7 @@ get '/api/search' => sub ($c) {
     { precision => 60, scope => 'gar', type => 'room', full_address => 'Ростовская область, город Таганрог, улица Театральная, дом 17-2, квартира 5, помещение 69', gar_objectid=> '97944774' }
     );
 
-  $c->render(json => \@hits);
+  $c->render(json => \@result);
 };
 
 app->start;
