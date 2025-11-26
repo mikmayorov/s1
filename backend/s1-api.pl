@@ -37,7 +37,6 @@ if ( $cfg{'app.log2file'} eq 'yes' ) {
 # настройка http сервера hypnotoad
 map { if ( /^hypnotoad\.(.+)/ ) { app->config->{hypnotoad}{$1} = $cfg{$_}; } } keys %cfg;
 
-
 app->hook(around_dispatch => sub {
     my ($next, $c) = @_;
     my $res;
@@ -80,16 +79,21 @@ get '/api/ping' => sub {
 
 # универсальный поиск
 get '/api/search' => sub ($c) {
+  
+  # нормализация входных параметров
   my $q = Mojo::Util::trim($c->param('q') // '');
+  $q =~ s/\s+/ /g;
 
   $c->app->log->debug("search called: q=$q");
 
-  return $c->render(
+  my $qlen = length($q);
+  ($qlen < 3 || $qlen > 100) && return $c->render(
                 status => 400,                # Bad Request
-                json => { error => 'parameter q is required with min lenght 2 char' }
-                ) if $q eq '' || length($q) < 3;
+                json => { error => 'parameter q is required with min/max lenght 2/100 char' }
+                );
 
-  my $sth = $dbh->prepare('SELECT row_number() over () index_number, * FROM search_gar(?)');
+  # row_number() over () index_number - если прийдеться отдельно сохранять индекс сортированого столбца
+  my $sth = $dbh->prepare('SELECT * FROM search_gar(?)');
   $sth->execute($q);
   my $rows = $sth->fetchall_arrayref({});
   $sth->finish;
