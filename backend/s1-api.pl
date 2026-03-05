@@ -7,13 +7,13 @@ use utf8;
 use open qw/:std :encoding(utf8)/;
 
 use POSIX qw(strftime);
-use DDP; # аналог Data::Dump
 use Config::Simple;
 use Getopt::Long;
-use DBI;
+# use DBI;
 
 use Mojolicious::Lite -signatures;
 use Mojo::JSON qw(encode_json decode_json);
+use Mojo::Pg;
 
 # базовый каталог запуска
 $0 =~ /^(.+)\/.+?.pl$/;
@@ -55,21 +55,24 @@ app->hook(around_dispatch => sub {
     return $res;
 });
 
-my $dbh = DBI->connect('dbi:Pg:dbname=' . $cfg{'db.name'} . ';host=' . $cfg{'db.host'}, $cfg{'db.user'}, $cfg{'db.password'},
-                       { PrintWarn => 0,
-                         PrintError => 0,
-                         RaiseError => 1,
-                         AutoCommit => 1,
-                         ShowErrorStatement => 1,
-                         pg_enable_utf8     => 1,
-                         HandleError        => sub {
-                              my ($err, $h, $ret) = @_;   # $h - handle (dbh или sth)
-                              my $sql = eval { $h->{Statement} } // '';
-                              # app->log->error("DBI error: $err; SQL: $sql");
-                              # вернуть 0, чтобы ошибка дальше пошла в RaiseError (die)
-                              return 0; },
-                        }
-                         ) || die "Не могу соедениться с базой данных";
+helper pg => sub ($c) {
+  state $pg = do {
+    my $pg = Mojo::Pg->new( $cfg{'db.s1_url'});
+
+    $pg->max_connections($cfg{'db.s1_poll'} // 5);
+    $pg->options({
+      PrintWarn         => 0,
+      PrintError        => 0,
+      RaiseError        => 1,
+      ShowErrorStatement => 1,
+      pg_enable_utf8    => 1,
+      pg_auto_reconnect => 1,
+    });
+
+    $pg;
+  };
+};
+
 
 # проверка что api 
 get '/api/ping' => sub {
@@ -79,7 +82,7 @@ get '/api/ping' => sub {
 
 # универсальный поиск
 get '/api/search' => sub ($c) {
-  
+
   # нормализация входных параметров
   my $q = Mojo::Util::trim($c->param('q') // '');
   $q =~ s/\s+/ /g;
@@ -93,10 +96,18 @@ get '/api/search' => sub ($c) {
                 );
 
   # row_number() over () index_number - если прийдеться отдельно сохранять индекс сортированого столбца
-  my $sth = $dbh->prepare('SELECT * FROM search_gar(?)');
-  $sth->execute($q);
-  my $rows = $sth->fetchall_arrayref({});
-  $sth->finish;
+  my $rows;
+  eval {
+    $rows = $c->pg->db->query('SELECT * FROM search_gar(?)', $q)->hashes->to_array;
+  };
+
+  if ($@) {
+    $c->app->log->error("DB error in /api/search: $@");
+    return $c->render(
+      status => 503,
+      json   => { error => 'database is temporarily unavailable' },
+    );
+  }
 
   my @result;
   push @result, { scope => 'gar', number_results => scalar(@$rows), data => $rows };
