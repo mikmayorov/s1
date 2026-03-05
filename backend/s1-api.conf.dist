@@ -4,11 +4,9 @@
 log2file = no
 
 [db]
-# настройки доступа к нужным БД
-url_s1 = 
-url_mlink = 
-url_s2 = 
-poll = 5
+# настройки доступа к postgres БД
+s1_url = postgresql://<user>:<password>@<hostname>/<database>
+s1_poll = 5
 
 [hypnotoad]
 # настройки Hypnotoad. можно использовать любые ключи из конфигурации
